@@ -1,23 +1,77 @@
 import numpy as np
 import LSBSteg
 import requests
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+from keras.models import Sequential
+from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
 
 # api_base_url = 'http://3.70.97.142:5000'
 # team_id= 'BFhxJPg'
 
-api_base_url = 'http://127.0.0.1:8000'
-team_id= 'abcdefghi'
+# api_base_url = 'http://127.0.0.1:8000'
+# team_id= 'abcdefghi'
 
-def make_prediction(model_path, data_point):
-#     # Load the trained model from the file
-#     model = joblib.load(model_path)
-#     # Make predictions for the input data point
-#     prediction = model.predict(data_point)
-#     # Return the prediction (0 or 1)
-#     return prediction[0]
-    pass
+
+
+def start_model():
+    loaded_model = Sequential([
+        Conv2D(64, kernel_size=(3, 3), activation='relu', input_shape=(1998, 101, 1)),
+        MaxPooling2D(pool_size=(2, 2)),
+        Conv2D(64, kernel_size=(3, 3), activation='relu'),
+        MaxPooling2D(pool_size=(2, 2)),
+        Conv2D(32, kernel_size=(5, 5), activation='relu'),
+        Conv2D(32, kernel_size=(7, 7), activation='relu'),
+        Flatten(),
+        Dense(128, activation='relu'),
+        Dense(64, activation='relu'),
+        Dense(1, activation='sigmoid')
+    ])
+    loaded_model.load_weights('model_2_weights.h5')
+    return loaded_model
+
+
+model = start_model()
+
+def con(d):
+    mx = 0
+    nonsec = 0
+    currentmax=0
+    for i in range (1998):
+        num=0
+        for j in range (50):
+            if d[i][j] > 1 :
+                num+=1
+            else :
+                num-=1
+            if num > 2:
+                currentmax+=1
+                mx = max(currentmax,mx)
+                nonsec=0
+                break
+            elif num < -10 or j == 49:
+                nonsec-=1
+                if nonsec==-3:
+                    currentmax=0
+                    nonsec=0
+                break
+    return mx
+
+def call(f1,f2,f3):
+    arr=np.array([f1,f2,f3])
+    f1[np.isinf(f1)] = 65500
+    f2[np.isinf(f2)] = 65500
+    f2[np.isinf(f3)] = 65500
+    f1 = (f1 / 65500) * 255
+    f2 = (f2 / 65500) * 255
+    f3 = (f3 / 65500) * 255
+    predictions = model.predict(np.array([f1,f2,f3]))
+    mi = 0
+    ms = 0.5
+    for i in range(3):
+        if predictions[i]>ms:
+            if con(arr[i])>50:
+                ms=predictions[i]
+                mi=i+1
+    return mi
 
 def init_eagle(team_id):
     '''
@@ -40,11 +94,11 @@ def init_eagle(team_id):
             return footprint1 , footprint2 , footprint3
         except Exception as e:
             print("Error parsing response in init function :", e)
-            end_eagle()
+            end_eagle(team_id)
             return None
     else:
         print("Init Error:", response.status_code)
-        end_eagle()
+        end_eagle(team_id)
         return None
 
 def request_msg(team_id, channel_id):
@@ -63,11 +117,11 @@ def request_msg(team_id, channel_id):
             return encodedMsg
         except Exception as e:
             print("Error parsing response in request function :", e)
-            end_eagle()
+            end_eagle(team_id)
             return None
     else:
         print("Error in request function:", response.status_code)
-        end_eagle()
+        end_eagle(team_id)
         return None
 
 def skip_msg(team_id):
@@ -89,13 +143,14 @@ def skip_msg(team_id):
 
             return footprint1 , footprint2 , footprint3
         except Exception as e:
+            end_eagle(team_id)
             print("data " , data)
             print("Message is finished or error parsing response in submit function :", e)
-            end_eagle()
             return None
     else:
-        print("Error in Skipping function:", response.status_code)
-        end_eagle()
+        print("Skip message ended:", response.status_code)
+        end_eagle(team_id)
+        print("response from Skip function2:", response.content)
         return None
 
 def submit_msg(team_id, decoded_msg):
@@ -120,14 +175,15 @@ def submit_msg(team_id, decoded_msg):
 
             return footprint1 , footprint2 , footprint3
         except Exception as e:
-            print("data " , data)
             print("Message is finished or error parsing response in submit function :", e)
-            end_eagle()
+            end_eagle(team_id)
+            print("data " , data)
             return None
     else:
         # Print an error message if the request was not successful
-        print("Error in submit function:", response.status_code)
-        end_eagle()
+        print("submit function ended : ", response.status_code)
+        end_eagle(team_id)
+        print("response: ", response.content)
         return None
 
 def end_eagle(team_id):
@@ -142,14 +198,15 @@ def end_eagle(team_id):
     response = requests.post(api_base_url+"/eagle/end-game", json=payload , headers={'Content-Type': 'application/json'})
     if response.status_code == 200 or response.status_code == 201:
         try:
-            data = response.json()
-            print("end function " , data)
+            # data = response.json()
+            print("end function " , response.content)
         except Exception as e:
+            print(response)
             print("Error parsing response in end function :", e)
     else:
         print("End error:", response.status_code)
 
-def select_channel(footprint): # return number of selected channel
+def select_channel(footprint):
     '''
     According to the footprint you recieved (one footprint per channel)
     you need to decide if you want to listen to any of the 3 channels or just skip this message.
@@ -157,25 +214,15 @@ def select_channel(footprint): # return number of selected channel
     Refer to the documentation of the Footprints to know more what the footprints represent to guide you in your approach.        
     '''
     footprint1 , footprint2 , footprint3 = footprint
-    # Use the trained model to make predictions
-    res1 = make_prediction('trained_model.pkl', footprint1)
-    res2 = make_prediction('trained_model.pkl', footprint2)
-    res3 = make_prediction('trained_model.pkl', footprint3)
-    if res1 == 1:
-        return 1 # number of channel
-    elif res2 == 1:
-        return 2
-    elif res3 == 1:
-        return 3
-    else:
-        return 0
+    res = call(footprint1 , footprint2 , footprint3)
+    return res
 
 def submit_eagle_attempt(team_id):
     '''
-     Call this function to start playing as an eagle. 
-     You should submit with your own team id that was sent to you in the email.
-     Remeber you have up to 15 Submissions as an Eagle In phase1.
-     In this function you should:
+    Call this function to start playing as an eagle. 
+    You should submit with your own team id that was sent to you in the email.
+    Remeber you have up to 15 Submissions as an Eagle In phase1.
+    In this function you should:
         1. Initialize the game as fox 
         2. Solve the footprints to know which channel to listen on if any.
         3. Select a channel to hear on OR send skip request.
@@ -186,36 +233,23 @@ def submit_eagle_attempt(team_id):
     if footprints is not None:
         while True:
             channel_id = select_channel(footprints)
-            if channel_id is not None:
+            print("Selected channel: ", channel_id)
+            if channel_id != 0:
                 encodedmsg = request_msg(team_id, channel_id)
                 if encodedmsg is not None:
                     decodedmsg = LSBSteg.decode(encodedmsg)
+                    print("Decoded message: ", decodedmsg)
                     footprints = submit_msg(team_id, decodedmsg)
                     if footprints is None:
                         return None
                 else:
                     return None
             else:
+                print("Skip message")
                 footprints = skip_msg(team_id)
                 if footprints is None:
                     return None
     else:
         print("Error initializing the game")
-
-def start_model():
-    loaded_model = Sequential([
-        Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=(1998, 101, 1)),
-        MaxPooling2D(pool_size=(2, 2)),
-        Conv2D(64, kernel_size=(3, 3), activation='relu'),
-        MaxPooling2D(pool_size=(2, 2)),
-        Flatten(),
-        Dense(128, activation='relu'),
-        Dense(64, activation='relu'),
-        Dense(1, activation='sigmoid')
-    ])
-    loaded_model.load_weights('model_weights.h5')
-    return loaded_model
-
-
 
 submit_eagle_attempt(team_id)
