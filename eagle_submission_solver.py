@@ -3,12 +3,12 @@ import LSBSteg
 import requests
 from keras.models import Sequential
 from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+import json
 
-# api for submitting on server
-api_base_url = 'http://16.171.171.147:5000'
-team_id= 'BFhxJPg'
+# api_base_url = 'http://16.171.171.147:5000'
+# team_id= 'BFhxJPg'
 
-# api for testing locally
+
 api_base_url = 'http://localhost:8000'
 team_id= 'BFhxJPg'
 
@@ -19,7 +19,6 @@ def norm(data,mm=5):
         data[i][data[i]>=value]=value
         data[i]=data[i]*(mm/value)
         data[i][data[i]>=mm]=mm
-
 
 def start_model():
     loaded_model = Sequential([
@@ -38,12 +37,55 @@ def start_model():
     loaded_model.load_weights('model2_to_submit3_weights.h5')
     return loaded_model
 
+
+def con(d):
+  mx = 0
+  nonsec = 0
+  currentmax=0
+  for i in range (1998):
+    num=0
+    for j in range (50):
+      if d[i][j] > 1 :
+         num+=1
+      else :num-=1
+      if num > 2:
+         currentmax+=1
+         mx = max(currentmax,mx)
+         nonsec=0
+         break
+      elif num < -10 or j == 49:
+         nonsec-=1
+         if nonsec==-3:
+            currentmax=0
+            nonsec=0
+         break
+
+  return mx
+
 model=start_model()
 
 def call(f1,f2,f3):
     arr= np.array([f1,f2,f3])
     norm(arr)
     predictions = model.predict(np.array(arr))
+    try:
+        with open('footprint_21.json', 'a') as json_file:
+            serialized_data = json.dumps(f1.tolist())
+            if json_file.tell() != 0:
+                json_file.write('\n')
+            json_file.write(serialized_data)
+        with open('footprint_22.json', 'a') as json_file:
+            serialized_data = json.dumps(f2.tolist())
+            if json_file.tell() != 0:
+                json_file.write('\n')
+            json_file.write(serialized_data)
+        with open('footprint_23.json', 'a') as json_file:
+            serialized_data = json.dumps(f3.tolist())
+            if json_file.tell() != 0:
+                json_file.write('\n')
+            json_file.write(serialized_data)
+    except Exception as e:
+        print("Error writing to file: ", e)
     mi = 0
     ms = 0.5
     print(predictions)
@@ -51,6 +93,7 @@ def call(f1,f2,f3):
         if predictions[i]>ms:
             ms=predictions[i]
             mi=i+1
+
     return mi
 
 def init_eagle(team_id):
@@ -167,6 +210,7 @@ def submit_eagle_attempt(team_id):
     if footprints is not None:
         while True:
             channel_id = select_channel(footprints)
+            print("Selected channel: ", channel_id)
             if channel_id != 0:
                 encodedmsg = request_msg(team_id, channel_id)
                 if encodedmsg is not None:
@@ -183,6 +227,5 @@ def submit_eagle_attempt(team_id):
                     return None
     else:
         print("Error initializing the game")
-
 
 submit_eagle_attempt(team_id)
